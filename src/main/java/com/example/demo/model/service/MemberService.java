@@ -1,6 +1,7 @@
 package com.example.demo.model.service;
 
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
@@ -21,13 +22,19 @@ public class MemberService implements UserDetailsService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    } // 클래스 아래쪽
 
     // 관리자가 부여할 수 있는 권한 (화면에서 넘어온 값을 그대로 믿지 않는다)
-private static final List<String> ROLES = List.of("USER", "ADMIN");
-
+    private static final List<String> ROLES = List.of("USER", "ADMIN");
 
     // 회원가입
     public Member signup(MemberForm form) {
+        if (isBlank(form.getUsername()) || isBlank(form.getPassword()) || isBlank(form.getName())) {
+            throw new IllegalArgumentException("아이디, 비밀번호, 이름은 필수입니다.");
+        }
+
         // 비밀번호 확인 검증 (연습문제 2번)
         if (!form.getPassword().equals(form.getPasswordConfirm())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
@@ -71,17 +78,14 @@ private static final List<String> ROLES = List.of("USER", "ADMIN");
         return memberRepository.findAll(Sort.by("id"));
     }
 
-
-
-
-    public void changeRole(Long id, String role) { // 권한 변경
+    public Member changeRole(Long id, String role) { // 권한 변경
         if (!ROLES.contains(role)) { // 허용된 권한만
             throw new IllegalArgumentException("허용되지 않는 권한입니다 : " + role);
         }
         Member member = memberRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("회원이 존재하지 않습니다."));
         member.setRole(role);
-        memberRepository.save(member); // UPDATE (id 가 있으면 수정)
+        return memberRepository.save(member); // UPDATE (id 가 있으면 수정)
     }
 
     @PreAuthorize("hasRole('ADMIN')") // 관리자만 실행 가능 (2차 잠금)
@@ -89,6 +93,10 @@ private static final List<String> ROLES = List.of("USER", "ADMIN");
         Member member = memberRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("회원이 존재하지 않습니다."));
         memberRepository.delete(member); // DELETE
+    }
+
+    public Optional<Member> findById(Long id) {
+        return memberRepository.findById(id);
     }
 
 }

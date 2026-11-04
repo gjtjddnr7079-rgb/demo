@@ -37,6 +37,8 @@ public class SecurityConfig {
 
                         .requestMatchers("/api/hello").permitAll()
 
+                        .requestMatchers("/board", "/board/{id:\\d+}").permitAll() // 게시판목록·상세: 누구나
+
                         .anyRequest().authenticated())
                 .formLogin(form -> form
                         .loginPage("/login")

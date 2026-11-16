@@ -1,63 +1,90 @@
 package com.example.demo.controller;
 
 import java.security.Principal;
-import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+
 import com.example.demo.model.domain.Post;
 import com.example.demo.model.dto.PostForm;
+import com.example.demo.model.service.CommentService;
 import com.example.demo.model.service.PostService;
 
-@Controller // 게시판화면컨트롤러
-@RequestMapping("/board") // 모든URL 앞에/board
+@Controller
+@RequestMapping("/board")
 public class BoardController {
+
     @Autowired
     PostService postService;
 
-    @GetMapping // 목록: GET /board(누구나)
-    public String list(Model model) {
-        List<Post> posts = postService.findAll();
-        model.addAttribute("posts", posts);
+    @Autowired
+    CommentService commentService;
+
+   // [연습문제 2 반영] 목록 + 페이징 + 검색 범위(type)
+    @GetMapping
+    public String list(@RequestParam(defaultValue = "0") int page,
+                       @RequestParam(defaultValue = "title") String type,
+                       @RequestParam(required = false) String keyword,
+                       Model model) {
+        Page<Post> posts = postService.findPage(type, keyword, page);
+        model.addAttribute("posts", posts.getContent());
+        model.addAttribute("page", posts);
+        model.addAttribute("type", type);
+        model.addAttribute("keyword", keyword);
         return "board/list";
     }
 
-    @GetMapping("/write") // 글쓰기화면: GET /board/write (로그인필요)
+    // [연습문제 1 반영] 내가 쓴 글 페이징 (GET /board/my?page=0)
+    @GetMapping("/my")
+    public String myPosts(@RequestParam(defaultValue = "0") int page,
+                          Principal principal,
+                          Model model) {
+        Page<Post> posts = postService.findMyPage(principal.getName(), page);
+        model.addAttribute("posts", posts.getContent());
+        model.addAttribute("page", posts);
+        model.addAttribute("pageUrl", "/board/my");
+        model.addAttribute("listTitle", "내가 쓴 글");
+        return "board/list";
+    }
+
+    @GetMapping("/write")
     public String writeForm() {
         return "board/form";
     }
 
-    @PostMapping("/write") // 글쓰기처리: POST /board/write
+    @PostMapping("/write")
     public String write(PostForm postForm, Principal principal, Model model) {
         try {
-            Post post = postService.write(postForm, principal.getName()); // 작성자= 로그인한사람
-            return "redirect:/board/" + post.getId(); // 저장후상세화면으로
-        } catch (IllegalArgumentException e) { // 빈제목·내용
+            Post post = postService.write(postForm, principal.getName());
+            return "redirect:/board/" + post.getId();
+        } catch (IllegalArgumentException e) {
             model.addAttribute("error", e.getMessage());
-            return "board/form"; // 입력값유지한채다시글쓰기화면
+            return "board/form";
         }
     }
 
-    @GetMapping("/{id}") // 상세: GET /board/3 (누구나)
+    @GetMapping("/{id}")
     public String detail(@PathVariable Long id, Model model) {
-        Post post = postService.findById(id);
+        Post post = postService.read(id);
         model.addAttribute("post", post);
+        model.addAttribute("comments", commentService.findByPost(post));
         return "board/detail";
     }
 
-    @GetMapping("/{id}/edit") // 수정화면: GET /board/3/edit
+    @GetMapping("/{id}/edit")
     public String editForm(@PathVariable Long id, Model model) {
         Post post = postService.findForEdit(id);
-        PostForm postForm = new PostForm(); // 기존내용을폼에채워서보여준다
+        PostForm postForm = new PostForm();
         postForm.setTitle(post.getTitle());
         postForm.setContent(post.getContent());
         model.addAttribute("postForm", postForm);
-        model.addAttribute("postId", id); // 화면이"수정" 모드로바뀐다
+        model.addAttribute("postId", id);
         return "board/form";
     }
 
-    @PostMapping("/{id}/edit") // 수정처리: POST /board/3/edit
+    @PostMapping("/{id}/edit")
     public String edit(@PathVariable Long id, PostForm postForm, Model model) {
         try {
             postService.edit(id, postForm);
@@ -69,9 +96,9 @@ public class BoardController {
         }
     }
 
-    @PostMapping("/{id}/delete") // 삭제처리: POST /board/3/delete
+    @PostMapping("/{id}/delete")
     public String delete(@PathVariable Long id) {
         postService.delete(id);
-        return "redirect:/board?deleted"; // 목록+ "삭제되었습니다"
+        return "redirect:/board?deleted";
     }
 }

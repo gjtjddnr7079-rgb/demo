@@ -6,12 +6,15 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.*;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import com.example.demo.model.domain.Member;
 import com.example.demo.model.dto.MemberForm;
 import com.example.demo.model.repository.MemberRepository;
+import com.example.demo.model.repository.PostRepository;
+import com.example.demo.model.repository.CommentRepository;
 
 @Service
 public class MemberService implements UserDetailsService {
@@ -21,6 +24,12 @@ public class MemberService implements UserDetailsService {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+private PostRepository postRepository;
+
+@Autowired
+private CommentRepository commentRepository;
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
@@ -89,11 +98,23 @@ public class MemberService implements UserDetailsService {
     }
 
     @PreAuthorize("hasRole('ADMIN')") // 관리자만 실행 가능 (2차 잠금)
-    public void deleteMember(Long id) { // 회원 삭제
-        Member member = memberRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("회원이 존재하지 않습니다."));
-        memberRepository.delete(member); // DELETE
+// deleteMember() 메서드 수정
+public void deleteMember(Long id) {
+    Member member = memberRepository.findById(id)
+            .orElseThrow(() -> new IllegalArgumentException("회원이 존재하지 않습니다."));
+    checkNotMe(member);
+    if (postRepository.existsByAuthor(member) || commentRepository.existsByAuthor(member)) {
+        throw new IllegalArgumentException("작성한 글이나 댓글이 있는 회원은 삭제할 수 없습니다.");
     }
+    memberRepository.delete(member);
+}   
+
+private void checkNotMe(Member member) {
+    String loginUsername = SecurityContextHolder.getContext().getAuthentication().getName();
+    if (member.getUsername().equals(loginUsername)) {
+        throw new IllegalArgumentException("자기 자신은 삭제할 수 없습니다.");
+    }
+}
 
     public Optional<Member> findById(Long id) {
         return memberRepository.findById(id);

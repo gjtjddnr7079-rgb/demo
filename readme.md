@@ -481,7 +481,45 @@
 
 --------------------------------------------------------------------------------------------------------------------------------
 
+# 12주차 실습: WebSocket·STOMP 기반 실시간 남은 자리 동기화 및 개인 알림 구현
 
+> **수업명:** 자바웹프로그래밍(2)  
+> **강사:** 최도현  
+> **주요 내용:** Spring WebSocket + STOMP 메시지 브로커 설정, `SeatMessage` 전체 브로드캐스트(`/topic/seats`), `@TransactionalEventListener` 커밋 후 전송 패턴, `convertAndSendToUser` 개인 알림(`/user/queue/notifications`)  
 
+---
+
+## 🛠️ 실습 내용 요약
+
+### 1. WebSocket 및 STOMP 브로커 활성화 (`pom.xml`, `WebSocketConfig`, `SecurityConfig`)
+* **의존성 추가 및 엔드포인트 개방:**
+  * `pom.xml`에 `spring-boot-starter-websocket`을 추가하고 `WebSocketConfig`에서 `/ws` 연결 엔드포인트와 `/topic`, `/queue` 심플 브로커 및 `/user` 사용자 목적지 접두사 활성화
+  * `SecurityConfig.java`에 `.requestMatchers("/ws").permitAll()`을 추가하여 비로그인 사용자도 실시간 남은 자리 브로드캐스트를 구독할 수 있도록 구성[cite: 332, 333]
+
+---
+
+### 2. 실시간 남은 자리 브로드캐스트 및 트랜잭션 이벤트 분리 (`SeatMessage`, `RealtimeNotifier`, `EnrollmentService`)
+* **남은 자리 메시지 DTO (`SeatMessage.java`):**
+  * Java `record`를 활용하여 `postId`, `appliedCount`, `capacity`, `remaining` 정보를 담은 불변 JSON 메시지 모델 정의
+* **트랜잭션 롤백 시 유령 메시지 방지 (`@TransactionalEventListener`):**
+  * 서비스 로직 내부에서 메시지를 즉시 전송하면 중간 예외 발생으로 DB가 롤백되어도 이미 전송된 메시지는 취소할 수 없는 문제 해결
+  * `EnrollmentService.confirm()`에서는 `ApplicationEventPublisher.publishEvent()`로 이벤트만 발행하고, `RealtimeNotifier`의 `@TransactionalEventListener`(기본 `AFTER_COMMIT`)에서 트랜잭션 커밋 성공 시에만 `SimpMessagingTemplate.convertAndSend("/topic/seats", ...)`로 전송[cite: 335, 338, 340, 341, 342]
+
+---
+
+### 3. 모집글 작성자 대상 실시간 개인 알림 (`Notification`, `RealtimeNotifier`, `EnrollmentService`)
+* **특정 사용자 전용 큐 전송 (`convertAndSendToUser`):**
+  * 수신자 아이디(`to`), 알림 문구(`text`), 게시글 번호(`postId`)를 담은 `Notification` `record` 생성
+  * 본인이 자신의 모집글에 신청한 경우를 제외(`!writer.equals(username)`)하고 이벤트를 발행하며, `RealtimeNotifier`에서 `messagingTemplate.convertAndSendToUser(notification.to(), "/queue/notifications", notification)`으로 작성자에게만 개인 알림 전송[cite: 345, 346, 347]
+
+---
+
+### 4. [연습문제] 신청 취소 실시간 반영 및 댓글 알림 확장
+* **신청 취소 시 남은 자리 복구 및 취소 알림 (`EnrollmentService.cancel()`):**
+  * 기존 `@Transactional`이 적용된 `cancel()` 메서드에 `SeatMessage`와 `Notification` 이벤트 발행을 추가하여 신청 취소 시에도 남은 자리 증가와 작성자 취소 알림을 실시간 전송
+* **게시글 댓글 작성 실시간 알림 (`CommentService.write()`):**
+  * `@TransactionalEventListener`가 동작할 수 있도록 `CommentService.write()`에 `@Transactional`을 선언하고, 타인이 내 게시글에 댓글을 등록할 때 게시글 작성자에게 실시간 댓글 알림 발행[cite: 354, 355]
+
+---
 
 

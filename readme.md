@@ -435,7 +435,51 @@
 * **검색 범위(제목+내용 / 작성자) 선택 기능:**
   * 검색 조건 파라미터(`type`)를 추가하고 JPQL 조건(`p.author.name LIKE %:name%`)을 분기하여 작성자 이름 기준 검색 및 페이지 이동 시 검색 조건 유지 구현[cite: 269]
 
+-------------------------------------------------------------------------------------------------------------------------------------------------
+
+# 11주차 실습: 모집글·파일 업로드, 세션 신청 바구니 및 `@Transactional` 원자성 보장
+
+> **수업명:** 자바웹프로그래밍(2)  
+> **강사:** 최도현  
+> **주요 내용:** `Post` 모집글 확장, `MultipartFile` 포스터 이미지 업로드 및 정적 리소스 매핑, `HttpSession` 신청 바구니(`LinkedHashSet`), `Enrollment` 신청 확정 및 `@Transactional` 롤백 처리  
+
 ---
+
+## 🛠️ 실습 내용 요약
+
+### 1. 모집글 확장 및 포스터 이미지 업로드 (`Post`, `PostForm`, `PostService`, `WebConfig`)
+* **모집글 필드 및 상태 계산 메서드 추가 (`Post.java`):**
+  * 기존 `Post` 엔티티에 정원(`capacity`, `null`이면 일반 글), 신청 인원(`appliedCount`), 포스터 파일명(`posterFile`)을 추가하고 `isRecruit()`, `isFull()`, `getRemaining()` 메서드로 모집 상태와 남은 자리 계산
+* **포스터 파일 업로드 보안 및 정적 리소스 매핑 (`FileStore`, `WebConfig.java`, `SecurityConfig.java`):**
+  * `MultipartFile`로 전달받은 이미지를 확장자 화이트리스트(`jpg`, `png`, `gif`, `webp`), 매직 바이트(파일 헤더) 검증, `UUID` 파일명 변환 후 외부 `uploads/` 폴더에 저장
+  * `WebConfig`에서 `/uploads/**` 경로를 `file:uploads/`로 매핑하고 `SecurityConfig`에 `permitAll()` 허용, `application.properties`에서 최대 파일 업로드 크기를 `5MB`로 상향 조정[cite: 280, 281, 283, 285, 286, 287, 288, 290]
+
+---
+
+### 2. 세션 기반 신청 바구니 구현 (`CartController`, `PostService`)
+* **사용자별 세션 바구니 관리 (`HttpSession`, `LinkedHashSet`):**
+  * `POST /cart/{postId}` 요청 시 모집글 여부(`isRecruit()`) 검증 후 세션의 `"cart"`(`LinkedHashSet<Long>`)에 중복 없이 담은 순서를 유지하며 보관
+  * `GET /cart`에서 `findAllById()`로 바구니 목록을 조회하고 `POST /cart/{postId}/remove`로 개별 항목 제거 구현[cite: 292, 293, 294, 295, 296]
+
+---
+
+### 3. 신청 확정 및 `@Transactional` 원자성 보장 (`Enrollment`, `EnrollmentService`, `CartController`)
+* **신청 내역 엔티티 및 일괄 확정 처리 (`Enrollment.java`, `EnrollmentService.java`):**
+  * 회원(`member_id`)과 모집글(`post_id`)을 `@ManyToOne(fetch = FetchType.LAZY)`로 연결하는 `Enrollment` 엔티티 및 중복 신청(`existsByMemberAndPost`)·정원 마감(`isFull()`) 검증 로직 구현
+  * `POST /cart/confirm` 요청 시 신청 내역(`enrollments`) 저장과 모집글 신청 인원(`appliedCount + 1`) 증가를 처리하고 `RedirectAttributes.addFlashAttribute()`로 결과 메시지 전달
+* **`@Transactional`을 통한 일괄 롤백(Rollback) 처리:**
+  * 바구니의 여러 모집글을 순회하며 신청을 확정하는 도중 하나라도 중복 신청이나 정원 마감 예외(`IllegalStateException`)가 발생하면 앞서 처리된 `INSERT`와 `UPDATE`까지 모두 취소되도록 `@Transactional` 적용[cite: 299, 300, 301, 303, 304, 306, 309, 310]
+
+---
+
+### 4. [연습문제] 신청 취소(변경 감지) 및 연관 데이터·파일 삭제 정리
+* **신청 취소 및 JPA 변경 감지 (`POST /cart/enrollments/{id}/cancel`):**
+  * `@Transactional` 환경에서 본인 신청 여부(`AccessDeniedException`)를 검증한 뒤 신청 내역을 삭제하고, 별도의 `save()` 호출 없이 `enrollment.getPost().setAppliedCount(... - 1)` 변경 감지(Dirty Checking)만으로 신청 인원 차감
+* **신청자 보유 모집글·회원 삭제 차단 및 포스터 파일 정리:**
+  * `EnrollmentRepository`의 `existsByPost()` 및 `existsByMember()`를 통해 신청 내역이 존재하는 모집글이나 회원의 삭제를 사전에 차단하여 외래 키 참조 무결성 오류(500) 방지
+  * 신청자가 없는 모집글 삭제 시 `fileStore.delete()`를 호출해 `uploads/` 폴더에 저장된 포스터 이미지 파일도 함께 삭제[cite: 313, 317, 318]
+
+--------------------------------------------------------------------------------------------------------------------------------
 
 
 

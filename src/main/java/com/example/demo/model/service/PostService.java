@@ -18,6 +18,9 @@ import com.example.demo.model.domain.Post;
 import com.example.demo.model.dto.PostForm;
 import com.example.demo.model.repository.MemberRepository;
 import com.example.demo.model.repository.PostRepository;
+import java.util.Collection;
+import com.example.demo.model.repository.EnrollmentRepository;
+
 
 @Service
 public class PostService {
@@ -30,11 +33,17 @@ public class PostService {
     @Autowired
     private MemberRepository memberRepository;
 
+    @Autowired // [11주차] 단계 2 : 업로드 파일 저장소 (제공 코드)
+    private FileStore fileStore;
+
+    @Autowired
+    private EnrollmentRepository enrollmentRepository;
+
     public List<Post> findAll() {
         return postRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
     }
 
-   // [연습문제 2 반영] 검색 범위(type: 제목+내용 / 작성자)에 따른 페이징 조회
+    // [연습문제 2 반영] 검색 범위(type: 제목+내용 / 작성자)에 따른 페이징 조회
     public Page<Post> findPage(String type, String keyword, int page) {
         PageRequest pageable = PageRequest.of(Math.max(page, 0), PAGE_SIZE, Sort.by(Sort.Direction.DESC, "id"));
         if (keyword == null || keyword.isBlank()) {
@@ -50,6 +59,10 @@ public class PostService {
     public Page<Post> findMyPage(String username, int page) {
         PageRequest pageable = PageRequest.of(Math.max(page, 0), PAGE_SIZE, Sort.by(Sort.Direction.DESC, "id"));
         return postRepository.findByAuthor_Username(username, pageable);
+    }
+
+    public List<Post> findAllById(Collection<Long> ids) {
+        return postRepository.findAllById(ids); // SELECT * FROM posts WHERE id IN (?, ?, ?)
     }
 
     public Post findById(Long id) {
@@ -72,6 +85,8 @@ public class PostService {
         post.setContent(form.getContent());
         post.setAuthor(author);
         post.setCreatedAt(LocalDateTime.now());
+        post.setCapacity(form.getCapacity()); // [11주차] 단계 1 : 정원 (비우면 null = 일반 글)
+        post.setPosterFile(fileStore.save(form.getPoster())); // [11주차] 단계 2 : 포스터 저장 -> 파일 이름 (없으면 null)
         return postRepository.save(post);
     }
 
@@ -95,10 +110,22 @@ public class PostService {
         if (!isAdmin()) {
             checkWriter(post);
         }
+
+        // 삭제 실행 전 검증 및 포스터 파일 삭제 추가
+    if (enrollmentRepository.existsByPost(post)) {
+        throw new IllegalStateException("신청자가 있는 모집글은 삭제할 수 없습니다.");
+    }
+    if (post.getPosterFile() != null) {
+        fileStore.delete(post.getPosterFile()); // uploads 폴더의 이미지도 함께 삭제
+    }
         postRepository.delete(post);
     }
 
     private void validate(PostForm form) {
+        if (form.getCapacity() != null && (form.getCapacity() < 1 || form.getCapacity() > 100)) {
+            throw new IllegalArgumentException("모집 인원은 1~100명으로 입력하세요.");
+        }
+
         if (form.getTitle() == null || form.getTitle().isBlank()
                 || form.getContent() == null || form.getContent().isBlank()) {
             throw new IllegalArgumentException("제목과 내용을 모두 입력하세요.");

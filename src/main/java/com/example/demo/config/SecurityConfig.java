@@ -39,6 +39,10 @@ public class SecurityConfig {
 
                         .requestMatchers("/board", "/board/{id:\\d+}").permitAll() // 게시판목록·상세: 누구나
 
+                        .requestMatchers("/uploads/**").permitAll() // [11주차] 포스터 이미지 : 누구나 조회 가능
+
+                        .requestMatchers("/ws").permitAll() // [12주차] 실시간 연결 : 누구나
+
                         .anyRequest().authenticated())
                 .formLogin(form -> form
                         .loginPage("/login")
